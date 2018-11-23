@@ -2,8 +2,9 @@ import itertools
 import numpy as np
 import sys
 
-
 from collections import defaultdict
+
+import dennybritz_plotting as plotting
 
 
 def make_epsilon_greedy_policy(Q, epsilon, nA):
@@ -24,7 +25,10 @@ def make_epsilon_greedy_policy(Q, epsilon, nA):
 
     def policy_fn(observation):
         A = np.ones(nA, dtype=float) * epsilon / nA
-        best_action = np.argmax(Q[observation]) # TODO - this gives an ambiguous preference for equal values
+        if np.all(np.isclose(Q[observation], np.zeros(nA))):
+            best_action = np.random.randint(nA)
+        else:
+            best_action = np.argmax(Q[observation])
         A[best_action] += (1.0 - epsilon)
         return A
 
@@ -53,10 +57,13 @@ def q_learning(env, num_episodes, discount_factor=1.0, alpha=0.5, epsilon=0.1):
     # A nested dictionary that maps state -> (action -> action-value).
     Q = defaultdict(lambda: np.zeros(env.action_space.n))
 
-    # # Keeps track of useful statistics
-    # stats = plotting.EpisodeStats(
-    #     episode_lengths=np.zeros(num_episodes),
-    #     episode_rewards=np.zeros(num_episodes))
+    # Keeps track of how many times we've taken action a in state s
+    n_sa = defaultdict(lambda: np.zeros(env.action_space.n))
+
+    # Keeps track of useful statistics
+    stats = plotting.EpisodeStats(
+        episode_lengths=np.zeros(num_episodes),
+        episode_rewards=np.zeros(num_episodes))
 
     # The policy we're following
     policy = make_epsilon_greedy_policy(Q, epsilon, env.action_space.n)
@@ -77,11 +84,12 @@ def q_learning(env, num_episodes, discount_factor=1.0, alpha=0.5, epsilon=0.1):
             # Take a step
             action_probs = policy(state)
             action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
+            n_sa[state][action] += 1
             next_state, reward, done, _ = env.step(action)
 
-            # # Update statistics
-            # stats.episode_rewards[i_episode] += reward
-            # stats.episode_lengths[i_episode] = t
+            # Update statistics
+            stats.episode_rewards[i_episode] += reward
+            stats.episode_lengths[i_episode] = t
 
             # TD Update
             best_next_action = np.argmax(Q[next_state])
@@ -94,5 +102,7 @@ def q_learning(env, num_episodes, discount_factor=1.0, alpha=0.5, epsilon=0.1):
 
             state = next_state
 
-    return Q
-    # return Q, stats
+    final_policy = np.zeros((env.nS, env.nA))
+    for state in range(env.nS):
+        final_policy[state] = Q[state]
+    return Q, stats, n_sa, final_policy
