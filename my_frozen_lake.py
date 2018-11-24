@@ -5,6 +5,8 @@ from six import StringIO, b
 from gym import utils
 from gym.envs.toy_text import discrete
 
+from helpers import better_desc
+
 LEFT = 0
 DOWN = 1
 RIGHT = 2
@@ -54,11 +56,12 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
 
     metadata = {'render.modes': ['human', 'ansi']}
 
-    def __init__(self, desc=None, map_name="4x4", is_slippery=True):
+    def __init__(self, desc=None, map_name="4x4", slip_rate=0.5):
         if desc is None and map_name is None:
             raise ValueError('Must provide either desc or map_name')
         elif desc is None:
             desc = MAPS[map_name]
+        assert not slip_rate or 0.0 < slip_rate <= 1.0, 'Slip rate must be between 0.0 and 1.0'
         self.desc = desc = np.asarray(desc, dtype='c')
         self.nrow, self.ncol = nrow, ncol = desc.shape
         self.reward_range = (0, 1)
@@ -94,14 +97,16 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
                     if letter in b'GH':
                         li.append((1.0, s, 0, True))
                     else:
-                        if is_slippery:
-                            for b in [(a - 1) % 4, a, (a + 1) % 4]:
+                        if slip_rate:
+                            actions = [(a - 1) % 4, a, (a + 1) % 4]
+                            probs = [slip_rate / 2.0, 1.0 - slip_rate, slip_rate / 2.0]
+                            for b, p in zip(actions, probs):
                                 newrow, newcol = inc(row, col, b)
                                 newstate = to_s(newrow, newcol)
                                 newletter = desc[newrow, newcol]
                                 done = bytes(newletter) in b'GH'
                                 rew = float(newletter == b'G')
-                                li.append((1.0 / 3.0, newstate, rew, done))
+                                li.append((p, newstate, rew, done))
                         else:
                             newrow, newcol = inc(row, col, a)
                             newstate = to_s(newrow, newcol)
@@ -116,7 +121,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         outfile = StringIO() if mode == 'ansi' else sys.stdout
 
         row, col = self.s // self.ncol, self.s % self.ncol
-        desc = self.desc.tolist()
+        desc = better_desc(self.desc).tolist()
         desc = [[c.decode('utf-8') for c in line] for line in desc]
         desc[row][col] = utils.colorize(desc[row][col], "red", highlight=True)
         if self.lastaction is not None:
