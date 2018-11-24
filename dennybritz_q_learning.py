@@ -8,7 +8,7 @@ import dennybritz_plotting as plotting
 from aima_utils import argmax
 
 
-def make_epsilon_greedy_policy(Q, epsilon, nA):
+def make_epsilon_greedy_policy(Q, epsilon, decay, nA):
     """
     Creates an epsilon-greedy policy based on a given Q-function and epsilon.
 
@@ -24,13 +24,14 @@ def make_epsilon_greedy_policy(Q, epsilon, nA):
 
     """
 
-    def policy_fn(observation):
-        A = np.ones(nA, dtype=float) * epsilon / nA
+    def policy_fn(observation, episode):
+        e_prime = epsilon * decay ** episode
+        A = np.ones(nA, dtype=float) * e_prime / nA
         if np.all(np.isclose(Q[observation], np.zeros(nA))):
             best_action = np.random.randint(nA)
         else:
             best_action = np.argmax(Q[observation])
-        A[best_action] += (1.0 - epsilon)
+        A[best_action] += (1.0 - e_prime)
         return A
 
     return policy_fn
@@ -61,7 +62,7 @@ def make_exploration_function(Rplus, Ne):
     return np.vectorize(exploration_fn)
 
 
-def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilon=0.1, Rplus=None, Ne=None):
+def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilon=0.1, decay=1.0, Rplus=None, Ne=None):
     """
     Q-Learning algorithm: Off-policy TD control. Finds the optimal greedy policy
     while following an epsilon-greedy policy
@@ -73,6 +74,7 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
         discount_factor: Gamma discount factor.
         alpha: TD learning rate.
         epsilon: Chance the sample a random action. Float betwen 0 and 1.
+        decay: exponential decay rate for epsilon
         Rplus: Optimistic reward given to unexplored states
         Ne: Minimum number of times that each action will be taken at each state
 
@@ -95,9 +97,9 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
 
     # The policy we're following
     if method == 'greedy':
-        policy = make_epsilon_greedy_policy(Q, epsilon, env.action_space.n)
-        def get_next_action(state_):
-            action_probs = policy(state_)
+        policy = make_epsilon_greedy_policy(Q, epsilon, decay, env.action_space.n)
+        def get_next_action(state_, episode):
+            action_probs = policy(state_, episode)
             return np.random.choice(np.arange(len(action_probs)), p=action_probs)
     elif method == 'explore':
         if not Rplus:
@@ -106,7 +108,7 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
             Ne = 100
         exploration_fn = make_exploration_function(Rplus, Ne)
         done_exploring = False
-        def get_next_action(state_):
+        def get_next_action(state_, episode):
             exploration_values = exploration_fn(Q[state_], Nsa[state_])
             if np.allclose(exploration_values, exploration_values[0]):
                 return np.random.randint(env.nA)
@@ -114,7 +116,6 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
                 return np.argmax(exploration_values)
     else:
         raise ValueError('Unsupported method type')
-
 
     for i_episode in range(num_episodes):
         # Print out which episode we're on, useful for debugging.
@@ -130,7 +131,7 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
         for t in itertools.count():
 
             # Get an action based on the exploration function
-            action = get_next_action(state)
+            action = get_next_action(state, i_episode)
             next_state, reward, done, _ = env.step(action)
 
             # Update statistics
