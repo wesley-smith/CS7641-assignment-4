@@ -56,15 +56,19 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
 
     metadata = {'render.modes': ['human', 'ansi']}
 
-    def __init__(self, desc=None, map_name="4x4", slip_rate=0.5):
+    def __init__(self, desc=None, map_name="4x4", slip_rate=0.5, rewards=None):
         if desc is None and map_name is None:
             raise ValueError('Must provide either desc or map_name')
         elif desc is None:
             desc = MAPS[map_name]
         assert not slip_rate or 0.0 < slip_rate <= 1.0, 'Slip rate must be between 0.0 and 1.0'
+        if rewards:
+            assert isinstance(rewards, (list, tuple,)) and len(rewards) == 3, 'Rewards should be [living, hole, goal]'
+            self.reward_range = (min(rewards), max(rewards))
+        else:
+            self.reward_range = (0, 1)
         self.desc = desc = np.asarray(desc, dtype='c')
         self.nrow, self.ncol = nrow, ncol = desc.shape
-        self.reward_range = (0, 1)
 
         nA = 4
         nS = nrow * ncol
@@ -88,6 +92,19 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
                 row = max(row - 1, 0)
             return (row, col)
 
+        def reward(letter_):
+            if rewards:
+                if bytes(letter_) in b'SF':
+                    return rewards[0]
+                elif letter_ == b'H':
+                    return rewards[1]
+                elif letter_ == b'G':
+                    return rewards[2]
+                else:
+                    raise ValueError('WTF')
+            else:
+                return float(letter_ == b'G')
+
         for row in range(nrow):
             for col in range(ncol):
                 s = to_s(row, col)
@@ -105,14 +122,14 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
                                 newstate = to_s(newrow, newcol)
                                 newletter = desc[newrow, newcol]
                                 done = bytes(newletter) in b'GH'
-                                rew = float(newletter == b'G')
+                                rew = reward(newletter)
                                 li.append((p, newstate, rew, done))
                         else:
                             newrow, newcol = inc(row, col, a)
                             newstate = to_s(newrow, newcol)
                             newletter = desc[newrow, newcol]
                             done = bytes(newletter) in b'GH'
-                            rew = float(newletter == b'G')
+                            rew = reward(newletter)
                             li.append((1.0, newstate, rew, done))
 
         super(FrozenLakeEnv, self).__init__(nS, nA, P, isd)
