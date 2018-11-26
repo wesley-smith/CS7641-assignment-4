@@ -129,7 +129,7 @@ def q_learning(env, method, num_episodes, discount_factor=1.0, alpha=0.5, epsilo
         # One step in the environment
         # total_reward = 0.0
         for t in itertools.count():
-
+            t += 1
             # Get an action based on the exploration function
             action = get_next_action(state, i_episode)
             next_state, reward, done, _ = env.step(action)
